@@ -20,4 +20,4 @@ Part of [random image examples](https://ebola16.github.io/random-image-examples/
   [https://random-pokemon-tcg-card.vercel.app/?r=base3](https://random-pokemon-tcg-card.vercel.app?r=base3)
 
 - **Get a random card from Fossil (base set 3), excluding Aerodactyl (1/62):**  
-  [https://random-pokemon-tcg-card.vercel.app/?e=^(?!.*\/1$).*&r=base3](https://random-pokemon-tcg-card.vercel.app?e=^(?!.*\/1$).*&r=base3)
+  [https://random-pokemon-tcg-card.vercel.app/?e=/\\/1$/&r=base3](https://random-pokemon-tcg-card.vercel.app?e=/\\/1$/&r=base3)
