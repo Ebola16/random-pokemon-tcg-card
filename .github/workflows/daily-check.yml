@@ -12,13 +12,6 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
-      - name: Download previous latest commit SHA (if available)
-        uses: actions/download-artifact@v4
-        with:
-          name: last-commit
-          path: .last_commit
-        continue-on-error: true
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -37,9 +30,9 @@ jobs:
       - name: Get previous commit SHA
         id: previous_sha
         run: |
-          if [ -f .last_commit/commit.txt ]; then
-            cat .last_commit/commit.txt
-            echo "old_sha=$(cat .last_commit/commit.txt)" >> $GITHUB_OUTPUT
+          if [ -f data/last_commit.txt ]; then
+            cat data/last_commit.txt
+            echo "old_sha=$(cat data/last_commit.txt)" >> $GITHUB_OUTPUT
           else
             echo "old_sha=" >> $GITHUB_OUTPUT
           fi
@@ -56,6 +49,7 @@ jobs:
 
       - name: Run collectIDs and compare with images.json
         run: |
+          set -e
           mkdir -p data
           node << 'EOF'
           const fs = require('fs');
@@ -154,14 +148,12 @@ jobs:
           git push
 
 
-      - name: Save latest commit SHA as artifact
+      - name: Update last_commit.txt
+        if: steps.check_diff.outputs.changed == 'true'
         run: |
-          mkdir -p .last_commit
-          echo "${{ steps.latest_sha.outputs.new_sha }}" > .last_commit/commit.txt
-        shell: bash
-
-      - name: Upload commit SHA
-        uses: actions/upload-artifact@v4
-        with:
-          name: last-commit
-          path: .last_commit/commit.txt
+          echo "${{ steps.latest_sha.outputs.new_sha }}" > data/last_commit.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/last_commit.txt
+          git commit -m "Update last commit SHA"
+          git push
