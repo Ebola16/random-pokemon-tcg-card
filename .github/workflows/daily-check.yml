@@ -16,16 +16,32 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Get latest commit SHA from PokemonTCG/pokemon-tcg-data
-        id: latest_sha
+      - name: Get latest commit info from PokemonTCG/pokemon-tcg-data
+        id: latest_commit
         run: |
-          curl -s https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/commits/master \
-            | jq -r .sha > new_commit.txt
-          echo "new_sha=$(cat new_commit.txt)" >> $GITHUB_OUTPUT
+          node << 'EOF'
+          const fs = require('fs');
+          const https = require('https');
+
+          https.get("https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/commits/master", {
+            headers: { 'User-Agent': 'github-actions' }
+          }, res => {
+            let data = "";
+            res.on("data", chunk => data += chunk);
+            res.on("end", () => {
+              const commit = JSON.parse(data);
+              const sha = commit.sha;
+              const message = commit.commit.message.split("\n")[0]; // first line only
+
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `new_sha=${sha}\n`);
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `commit_message=${message}\n`);
+            });
+          }).on("error", err => {
+            console.error("Error fetching commit:", err.message);
+            process.exit(1);
+          });
+          EOF
 
       - name: Get previous commit SHA
         id: previous_sha
@@ -38,12 +54,13 @@ jobs:
           fi
 
       - name: Clone PokemonTCG repo
-        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha
+        if: steps.previous_sha.outputs.old_sha != steps.latest_commit.outputs.new_sha
         run: |
           git clone --depth=1 https://github.com/PokemonTCG/pokemon-tcg-data.git
 
       - name: Run collectIDs and compare with images.json
-        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha      
+        if: steps.previous_sha.outputs.old_sha != steps.latest_commit.outputs.new_sha
+        id: collect_ids
         run: |
           set -e
           mkdir -p data
@@ -53,6 +70,32 @@ jobs:
 
           const cardsDir = path.join(__dirname, 'pokemon-tcg-data/cards/en');
           const imagesPath = path.join(__dirname, 'data/images.json');
+
+          function naturalSort(a, b) {
+            const idxA = a.lastIndexOf('/');
+            const idxB = b.lastIndexOf('/');
+            const setA = a.slice(0, idxA);
+            const setB = b.slice(0, idxB);
+            const numA = a.slice(idxA + 1);
+            const numB = b.slice(idxB + 1);
+
+            if (setA !== setB) return setA.localeCompare(setB);
+
+            const pattern = /^([A-Za-z]*)(\d+)([A-Za-z]*)$/;
+            const matchA = numA.match(pattern);
+            const matchB = numB.match(pattern);
+
+            if (matchA && matchB) {
+              const [, prefixA, digitsA, suffixA] = matchA;
+              const [, prefixB, digitsB, suffixB] = matchB;
+              if (prefixA !== prefixB) return prefixA.localeCompare(prefixB);
+              const nA = parseInt(digitsA, 10);
+              const nB = parseInt(digitsB, 10);
+              if (nA !== nB) return nA - nB;
+              return suffixA.localeCompare(suffixB);
+            }
+            return numA.localeCompare(numB, undefined, { numeric: true, sensitivity: 'base' });
+          }
 
           async function collectIDs() {
             const allIDs = [];
@@ -72,61 +115,17 @@ jobs:
                         allIDs.push(updatedId);
                       }
                     }
-                  } else {
-                    console.warn(`Skipped non-array file: ${file}`);
                   }
                 } catch (err) {
                   console.error(`Failed to process ${file}:`, err.message);
                 }
               }
             }
-
             return allIDs;
-          }
-
-          function naturalSort(a, b) {
-            const idxA = a.lastIndexOf('/');
-            const idxB = b.lastIndexOf('/');
-
-            const setA = a.slice(0, idxA);
-            const setB = b.slice(0, idxB);
-
-            const numA = a.slice(idxA + 1);
-            const numB = b.slice(idxB + 1);
-
-            // Compare set code alphabetically
-            if (setA < setB) return -1;
-            if (setA > setB) return 1;
-
-            // Regex: [prefix letters][digits][suffix letters] (all optional parts)
-            const pattern = /^([A-Za-z]*)(\d+)([A-Za-z]*)$/;
-            const matchA = numA.match(pattern);
-            const matchB = numB.match(pattern);
-
-            if (matchA && matchB) {
-              const [, prefixA, digitsA, suffixA] = matchA;
-              const [, prefixB, digitsB, suffixB] = matchB;
-
-              if (prefixA < prefixB) return -1;
-              if (prefixA > prefixB) return 1;
-
-              const nA = parseInt(digitsA, 10);
-              const nB = parseInt(digitsB, 10);
-              if (nA !== nB) return nA - nB;
-
-              if (suffixA < suffixB) return -1;
-              if (suffixA > suffixB) return 1;
-
-              return 0;
-            }
-
-            // fallback: locale-aware compare with numeric option
-            return numA.localeCompare(numB, undefined, { numeric: true, sensitivity: 'base' });
           }
 
           async function run() {
             const newIDs = (await collectIDs()).sort(naturalSort);
-
             let existingIDs = [];
             if (fs.existsSync(imagesPath)) {
               try {
@@ -146,35 +145,14 @@ jobs:
               console.log("✅ No changes to IDs. images.json is up to date.");
             }
 
-            fs.writeFileSync('id_diff_result.txt', isDifferent ? "true" : "false");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `changed=${isDifferent}\n`);
           }
 
           run();
           EOF
-
-      - name: Check if images.json was updated
-        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha
-        id: check_diff
-        run: |
-          if [ -f id_diff_result.txt ] && grep -q "true" id_diff_result.txt; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Get latest commit info from PokemonTCG/pokemon-tcg-data
-        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha
-        id: latest_commit
-        run: |
-          curl -s https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/commits/master > commit.json
-          sha=$(jq -r .sha commit.json)
-          message=$(jq -r .commit.message commit.json | head -n 1)
-          echo "new_sha=$sha" >> $GITHUB_OUTPUT
-          echo "commit_message=$message" >> $GITHUB_OUTPUT
-
       
       - name: Commit and push updated images.json
-        if: steps.check_diff.outputs.changed == 'true'
+        if: steps.collect_ids.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -182,11 +160,10 @@ jobs:
           git commit -m "Update latest card IDs from: ${{ steps.latest_commit.outputs.commit_message }}"
           git push
 
-
       - name: Update last_commit.txt
-        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha
+        if: steps.previous_sha.outputs.old_sha != steps.latest_commit.outputs.new_sha
         run: |
-          echo "${{ steps.latest_sha.outputs.new_sha }}" > data/last_commit.txt
+          echo "${{ steps.latest_commit.outputs.new_sha }}" > data/last_commit.txt
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/last_commit.txt
