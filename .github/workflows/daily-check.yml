@@ -37,17 +37,13 @@ jobs:
             echo "old_sha=" >> $GITHUB_OUTPUT
           fi
 
-      - name: Exit early if commit hasn't changed
-        if: steps.previous_sha.outputs.old_sha == steps.latest_sha.outputs.new_sha
-        run: |
-          echo "No new commits — skipping."
-          exit 0
-
       - name: Clone PokemonTCG repo
+        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha
         run: |
           git clone --depth=1 https://github.com/PokemonTCG/pokemon-tcg-data.git
 
       - name: Run collectIDs and compare with images.json
+        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha      
         run: |
           set -e
           mkdir -p data
@@ -157,6 +153,7 @@ jobs:
           EOF
 
       - name: Check if images.json was updated
+        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha
         id: check_diff
         run: |
           if [ -f id_diff_result.txt ] && grep -q "true" id_diff_result.txt; then
@@ -166,6 +163,7 @@ jobs:
           fi
 
       - name: Get latest commit info from PokemonTCG/pokemon-tcg-data
+        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha
         id: latest_commit
         run: |
           curl -s https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/commits/master > commit.json
