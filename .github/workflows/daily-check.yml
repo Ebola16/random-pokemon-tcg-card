@@ -23,7 +23,7 @@ jobs:
       - name: Get latest commit SHA from PokemonTCG/pokemon-tcg-data
         id: latest_sha
         run: |
-          curl -s https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/commits/main \
+          curl -s https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/commits/master \
             | jq -r .sha > new_commit.txt
           echo "new_sha=$(cat new_commit.txt)" >> $GITHUB_OUTPUT
 
@@ -60,7 +60,6 @@ jobs:
 
           async function collectIDs() {
             const allIDs = [];
-
             const files = await fs.promises.readdir(cardsDir);
 
             for (const file of files) {
@@ -86,34 +85,72 @@ jobs:
               }
             }
 
-            return allIDs.sort(); // Sort for comparison
+            return allIDs;
+          }
+
+          function naturalSort(a, b) {
+            const idxA = a.lastIndexOf('/');
+            const idxB = b.lastIndexOf('/');
+
+            const setA = a.slice(0, idxA);
+            const setB = b.slice(0, idxB);
+
+            const numA = a.slice(idxA + 1);
+            const numB = b.slice(idxB + 1);
+
+            // Compare set code alphabetically
+            if (setA < setB) return -1;
+            if (setA > setB) return 1;
+
+            // Regex: [prefix letters][digits][suffix letters] (all optional parts)
+            const pattern = /^([A-Za-z]*)(\d+)([A-Za-z]*)$/;
+            const matchA = numA.match(pattern);
+            const matchB = numB.match(pattern);
+
+            if (matchA && matchB) {
+              const [, prefixA, digitsA, suffixA] = matchA;
+              const [, prefixB, digitsB, suffixB] = matchB;
+
+              if (prefixA < prefixB) return -1;
+              if (prefixA > prefixB) return 1;
+
+              const nA = parseInt(digitsA, 10);
+              const nB = parseInt(digitsB, 10);
+              if (nA !== nB) return nA - nB;
+
+              if (suffixA < suffixB) return -1;
+              if (suffixA > suffixB) return 1;
+
+              return 0;
+            }
+
+            // fallback: locale-aware compare with numeric option
+            return numA.localeCompare(numB, undefined, { numeric: true, sensitivity: 'base' });
           }
 
           async function run() {
-            const newIDs = await collectIDs();
+            const newIDs = (await collectIDs()).sort(naturalSort);
 
             let existingIDs = [];
             if (fs.existsSync(imagesPath)) {
               try {
-                const existingContent = await fs.promises.readFile(imagesPath, 'utf8');
-                existingIDs = JSON.parse(existingContent).sort();
+                existingIDs = JSON.parse(await fs.promises.readFile(imagesPath, 'utf8'));
               } catch (err) {
                 console.warn("⚠️ Failed to read existing images.json:", err.message);
               }
             }
 
-            const isDifferent = JSON.stringify(newIDs) !== JSON.stringify(existingIDs);
+            const sortedExisting = [...existingIDs].sort(naturalSort);
+            const isDifferent = JSON.stringify(newIDs) !== JSON.stringify(sortedExisting);
 
             if (isDifferent) {
-              await fs.promises.writeFile(imagesPath, JSON.stringify(newIDs, null, 2));
+              await fs.promises.writeFile(imagesPath, JSON.stringify(newIDs, null, 2) + "\n");
               console.log("✅ Updated images.json with new IDs.");
             } else {
               console.log("✅ No changes to IDs. images.json is up to date.");
             }
 
-            // Output result for GitHub Actions
-            const changedFlag = isDifferent ? "true" : "false";
-            fs.writeFileSync('id_diff_result.txt', changedFlag);
+            fs.writeFileSync('id_diff_result.txt', isDifferent ? "true" : "false");
           }
 
           run();
@@ -131,7 +168,7 @@ jobs:
       - name: Get latest commit info from PokemonTCG/pokemon-tcg-data
         id: latest_commit
         run: |
-          curl -s https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/commits/main > commit.json
+          curl -s https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/commits/master > commit.json
           sha=$(jq -r .sha commit.json)
           message=$(jq -r .commit.message commit.json | head -n 1)
           echo "new_sha=$sha" >> $GITHUB_OUTPUT
