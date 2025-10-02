@@ -36,6 +36,7 @@ jobs:
 
               fs.appendFileSync(process.env.GITHUB_OUTPUT, `new_sha=${sha}\n`);
               fs.appendFileSync(process.env.GITHUB_OUTPUT, `commit_message=${message}\n`);
+              process.exit(0); // <--- ensures step finishes
             });
           }).on("error", err => {
             console.error("Error fetching commit:", err.message);
@@ -157,7 +158,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/images.json
-          git commit -m "Update latest card IDs from: ${{ steps.latest_commit.outputs.commit_message }}"
+          git commit -m "Update card IDs from: ${{ steps.latest_commit.outputs.commit_message }}"
           git push
 
       - name: Update last_commit.txt
@@ -167,5 +168,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/last_commit.txt
-          git commit -m "Update last commit SHA"
+          git commit -m "Update last commit SHA from: ${{ steps.latest_commit.outputs.commit_message }}"
           git push
