@@ -184,7 +184,7 @@ jobs:
 
 
       - name: Update last_commit.txt
-        if: steps.check_diff.outputs.changed == 'true'
+        if: steps.previous_sha.outputs.old_sha != steps.latest_sha.outputs.new_sha
         run: |
           echo "${{ steps.latest_sha.outputs.new_sha }}" > data/last_commit.txt
           git config user.name "github-actions[bot]"
