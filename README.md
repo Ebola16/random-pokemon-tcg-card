@@ -1,6 +1,6 @@
 # Random Pokémon TCG Card
 
-Get a random Pokémon TCG Card from [https://pokemontcg.io/](https://pokemontcg.io/). A case-insensitive "r" query parameter ([RE2 regex](https://www.npmjs.com/package/re2), which is regex without backreferences and lookahead assertions) is supported. A case-insensitive "e" query parameter (exclude) is also supported that excludes matches separated by commas. These filter the contents of `/data/images.json`. Artificial intelligence tools are helpful for learning how to generate RE2 regex.
+Get a random Pokémon TCG Card from [https://scrydex.com/](https://scrydex.com/). A case-insensitive "r" query parameter ([RE2 regex](https://www.npmjs.com/package/re2), which is regex without backreferences and lookahead assertions) is supported. A case-insensitive "e" query parameter (exclude) is also supported that excludes matches separated by commas. These filter the contents of `/data/images.json`. Artificial intelligence tools are helpful for learning how to generate RE2 regex.
 
 Pokémon assets are ©2025 Nintendo, Creatures Inc., and GAME FREAK inc.
 All trademarks and copyrights are property of their respective owners.

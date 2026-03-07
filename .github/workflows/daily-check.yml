@@ -112,8 +112,7 @@ jobs:
                   if (Array.isArray(cards)) {
                     for (const card of cards) {
                       if (card.id) {
-                        const updatedId = card.id.replace(/-(?=[^-]*$)/, '/');
-                        allIDs.push(updatedId);
+                        allIDs.push(card.id);
                       }
                     }
                   }

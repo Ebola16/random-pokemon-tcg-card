@@ -63,7 +63,7 @@ export default async function handler(req, res) {
     }
 
     const randomImage = filtered[Math.floor(Math.random() * filtered.length)];
-    const redirectUrl = `https://images.pokemontcg.io/${randomImage}_hires.png`;
+    const redirectUrl = `https://images.scrydex.com/pokemon/${randomImage}/large`;
 
     res.writeHead(302, { Location: redirectUrl });
     res.end();
