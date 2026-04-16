@@ -15,7 +15,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 'lts/*'
 
       - name: Get latest commit info from PokemonTCG/pokemon-tcg-data
         id: latest_commit
@@ -32,11 +32,11 @@ jobs:
             res.on("end", () => {
               const commit = JSON.parse(data);
               const sha = commit.sha;
-              const message = commit.commit.message.split("\n")[0]; // first line only
+              const message = commit.commit.message.split("\n")[0];
 
               fs.appendFileSync(process.env.GITHUB_OUTPUT, `new_sha=${sha}\n`);
               fs.appendFileSync(process.env.GITHUB_OUTPUT, `commit_message=${message}\n`);
-              process.exit(0); // <--- ensures step finishes
+              process.exit(0);
             });
           }).on("error", err => {
             console.error("Error fetching commit:", err.message);
@@ -48,7 +48,6 @@ jobs:
         id: previous_sha
         run: |
           if [ -f data/last_commit.txt ]; then
-            cat data/last_commit.txt
             echo "old_sha=$(cat data/last_commit.txt)" >> $GITHUB_OUTPUT
           else
             echo "old_sha=" >> $GITHUB_OUTPUT
@@ -73,29 +72,10 @@ jobs:
           const imagesPath = path.join(__dirname, 'data/images.json');
 
           function naturalSort(a, b) {
-            const idxA = a.lastIndexOf('/');
-            const idxB = b.lastIndexOf('/');
-            const setA = a.slice(0, idxA);
-            const setB = b.slice(0, idxB);
-            const numA = a.slice(idxA + 1);
-            const numB = b.slice(idxB + 1);
-
-            if (setA !== setB) return setA.localeCompare(setB);
-
-            const pattern = /^([A-Za-z]*)(\d+)([A-Za-z]*)$/;
-            const matchA = numA.match(pattern);
-            const matchB = numB.match(pattern);
-
-            if (matchA && matchB) {
-              const [, prefixA, digitsA, suffixA] = matchA;
-              const [, prefixB, digitsB, suffixB] = matchB;
-              if (prefixA !== prefixB) return prefixA.localeCompare(prefixB);
-              const nA = parseInt(digitsA, 10);
-              const nB = parseInt(digitsB, 10);
-              if (nA !== nB) return nA - nB;
-              return suffixA.localeCompare(suffixB);
-            }
-            return numA.localeCompare(numB, undefined, { numeric: true, sensitivity: 'base' });
+            return a.localeCompare(b, undefined, {
+              numeric: true,
+              sensitivity: 'base'
+            });
           }
 
           async function collectIDs() {
@@ -127,6 +107,7 @@ jobs:
           async function run() {
             const newIDs = (await collectIDs()).sort(naturalSort);
             let existingIDs = [];
+
             if (fs.existsSync(imagesPath)) {
               try {
                 existingIDs = JSON.parse(await fs.promises.readFile(imagesPath, 'utf8'));
@@ -150,22 +131,27 @@ jobs:
 
           run();
           EOF
-      
-      - name: Update last_commit.txt
-        if: steps.previous_sha.outputs.old_sha != steps.latest_commit.outputs.new_sha
-        run: |
-          echo "${{ steps.latest_commit.outputs.new_sha }}" > data/last_commit.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/last_commit.txt
-          git commit -m "Update last commit SHA from: ${{ steps.latest_commit.outputs.commit_message }}"
-          git push
 
-      - name: Commit and push updated images.json
-        if: steps.collect_ids.outputs.changed == 'true'
+      - name: Commit and push changes (single commit)
+        if: steps.previous_sha.outputs.old_sha != steps.latest_commit.outputs.new_sha || steps.collect_ids.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/images.json
-          git commit -m "Update card IDs from: ${{ steps.latest_commit.outputs.commit_message }}"
-          git push
+
+          mkdir -p data
+
+          if [ "${{ steps.previous_sha.outputs.old_sha }}" != "${{ steps.latest_commit.outputs.new_sha }}" ]; then
+            echo "${{ steps.latest_commit.outputs.new_sha }}" > data/last_commit.txt
+            git add data/last_commit.txt
+          fi
+
+          if [ "${{ steps.collect_ids.outputs.changed }}" = "true" ]; then
+            git add data/images.json
+          fi
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Update data from: ${{ steps.latest_commit.outputs.commit_message }}"
+            git push
+          else
+            echo "No changes to commit"
+          fi
